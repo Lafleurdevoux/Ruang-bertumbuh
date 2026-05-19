@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- User Profile ---
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.uid == request.auth.uid
+          && data.email is string && data.email.size() <= 256
+          && (!('displayName' in data) || data.displayName == null || (data.displayName is string && data.displayName.size() <= 256))
+          && (!('photoURL' in data) || data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 2048))
+          && (!('goal_text' in data) || (data.goal_text is string && data.goal_text.size() <= 2048))
+          && (!('onboarding_completed' in data) || data.onboarding_completed is bool)
+          && (!('goal' in data) || (data.goal is string && data.goal.size() <= 256))
+          && (!('customLogoURL' in data) || (data.customLogoURL is string || data.customLogoURL == null));
+      }
+
+      allow get: if isOwner(userId);
+      
+      allow create: if isOwner(userId)
+        && incoming().keys().hasAll(['uid', 'email', 'createdAt'])
+        && incoming().keys().size() <= 12
+        && isValidUser(incoming())
+        && incoming().createdAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidUser(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'email', 'goal_text', 'onboarding_completed', 'goal', 'customLogoURL', 'updatedAt'])
+        && (!('updatedAt' in incoming()) || incoming().updatedAt == request.time);
+    }
+
+    // --- Reflections ---
+    match /reflections/{reflectionId} {
+      function isValidReflection(data) {
+        return data.userId == request.auth.uid
+          && data.content is string && data.content.size() <= 15000
+          && data.type in ['text', 'audio']
+          && (!('emotion' in data) || data.emotion == null || (data.emotion is string && data.emotion.size() <= 256))
+          && (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 2048))
+          // response structure validation
+          && (!('response' in data) || (
+              data.response is map 
+              && (!('kategori' in data.response) || data.response.kategori is string)
+              && (!('respon' in data.response) || data.response.respon is string)
+              && (!('mood' in data.response) || data.response.mood is string)
+              && (!('tampilkan_mindfulness' in data.response) || data.response.tampilkan_mindfulness is bool)
+              && (!('kategori_mindfulness' in data.response) || (data.response.kategori_mindfulness is string || data.response.kategori_mindfulness == null))
+              && (!('aktivitas_mindfulness' in data.response) || (data.response.aktivitas_mindfulness is map || data.response.aktivitas_mindfulness == null))
+          ));
+      }
+
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidReflection(incoming())
+        && incoming().timestamp == request.time
+        && incoming().keys().hasAll(['userId', 'content', 'type', 'timestamp'])
+        && incoming().keys().size() <= 12;
+
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && isValidReflection(incoming())
+        && incoming().userId == existing().userId
+        && incoming().timestamp == existing().timestamp
+        && incoming().diff(existing()).affectedKeys().hasOnly(['content', 'emotion', 'response', 'photoUrl', 'updatedAt'])
+        && (!('updatedAt' in incoming()) || incoming().updatedAt == request.time);
+
+      allow delete: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+  }
+}

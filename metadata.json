@@ -1,0 +1,6 @@
+{
+  "name": "Ruang Bertumbuh",
+  "description": "Pendengar empatik dan fasilitator refleksi diri dengan aktivitas mindfulness.",
+  "requestFramePermissions": ["microphone", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

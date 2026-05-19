@@ -1,0 +1,33 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 0. Global Safety Net
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Helper
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    match /journal-photos/{userId}/{allPaths=**} {
+      // Personal journal photos should only be accessible by the owner
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn() && request.auth.uid == userId
+        && request.resource.size < 10 * 1024 * 1024 // 10MB limit
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /logos/{userId}/{allPaths=**} {
+      allow read: if true; // Logos might need to be public for UI
+      allow write: if isSignedIn() && request.auth.uid == userId
+        && request.resource.size < 2 * 1024 * 1024 // 2MB limit
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /Music/{allPaths=**} {
+      allow read: if true; // Background music is public
+    }
+  }
+}
